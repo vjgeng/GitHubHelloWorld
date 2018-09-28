@@ -1,1 +1,163 @@
+pipeline {
+    agent any
+    
+    parameters {
+        string(defaultValue: "", description: 'Please enter the deploy version', name: 'Deploy_Version')
+    }
+    
+    /*environment {
+        ENV_NAME = "${Deploy_Version}"
+    }*/
 
+    stages {
+        stage('Download') {
+          steps{
+ 
+            nexusArtifactUploader artifacts: 
+                [[
+                    artifactId: 'TMBuimfmwAux', 
+                    classifier: '', 
+                    file: 'D:\\TMBuimfmwAux.jar', 
+                    type: 'jar'
+                ]], 
+                    credentialsId: 'nexusAdmin', 
+                    groupId: 'geng.kony.zip', 
+                    nexusUrl: 'localhost:8082', 
+                    nexusVersion: 'nexus3', 
+                    protocol: 'http', 
+                    repository: 'kony-tmb-releases',
+                    version: "${params.Deploy_Version}"
+
+  bat "mvn dependency:get -DrepoUrl=http://localhost:8082/repository/kony-tmb-releases/ -DgroupId=geng.kony.zip -DartifactId=TMBuimfmwAux -Dversion=${Deploy_Version} -Ddest=D:\\artifact"
+     
+          } 
+                                                                                                                                                                 
+        } // end download stage
+    stage('Deploy') {
+        steps { 
+            
+        bat 'C:\\"Program Files (x86)"\\nodejs\\node.exe D:\\node-mfdeployclient\\app.js'
+    
+        script {
+            
+            timeout(time: 1200, unit: 'SECONDS') {
+                
+            echo "set timeout to 20 Minutes"
+                
+            for (def element = 0; element < 20; element++) {
+                if (fileExists('D:\\konydeployreport\\deploy_status.txt')) {
+             
+                    def content = readFile encoding: 'utf-8', file: 'D:\\konydeployreport\\deploy_status.txt'
+                    def deployResult = content.substring(content.indexOf('|')+2, content.length()).trim()
+                    
+                    echo deployResult
+                    
+                    if(deployResult == "DEPLOY SUCCESS"){
+                        currentBuild.result = 'SUCCESS'
+                        return
+                        
+                    }
+                    else{
+                        currentBuild.result = 'FAILURE'
+                        return
+                    }
+                    
+                    return
+                  
+                }
+                else {
+                    echo "sleep 30s"
+                    sleep 30
+                    
+                    if(element >= 19){
+                        currentBuild.result = 'ABORTED'
+                        error('Retry more than 20 times  >> Stopping early…')
+                    }
+                }
+                
+            }
+            
+            }  // timeout loop
+            
+            /*timeout(time: 60, unit: 'SECONDS') {
+                   sleep 3
+                    echo "3s"
+                retry(5){
+                 sleep 5
+                 echo "not yet"
+                }
+            }*/
+            
+            /* if (fileExists('D:\\konydeployreport\\deploy_status2.txt')) {
+                    echo 'I only execute on the master branch'
+                    currentBuild.result = 'SUCCESS'
+                    return
+                          
+                }
+            else {
+                echo 'not found' 
+                
+                retry(5){
+                    echo 'sleep 3s'
+                    sleep 3
+                }
+                
+            }*/
+            
+        }
+                
+        
+        } // end Deploy stage
+    }
+    
+    stage('generate report'){
+    steps{
+            
+        echo "generate report"
+        
+    //cobertura autoUpdateHealth: false, autoUpdateStability: false, coberturaReportFile: '**/coverage.xml', conditionalCoverageTargets: '70, 0, 0', enableNewApi: true, failNoReports: false, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', onlyStable: false, sourceEncoding: 'ASCII', zoomCoverageChart: false
+    
+    //cobertura autoUpdateHealth: false, autoUpdateStability: false, coberturaReportFile: 'D:\\coverage\\coverage.xml', conditionalCoverageTargets: '70, 0, 0', enableNewApi: true, failUnhealthy: false, failUnstable: false, lineCoverageTargets: '80, 0, 0', maxNumberOfBuilds: 0, methodCoverageTargets: '80, 0, 0', onlyStable: false, sourceEncoding: 'ASCII', zoomCoverageChart: false
+
+    //archive (includes: 'pkg/*.gem')
+         
+        publishHTML(target: [
+                reportName           : 'Tmb Coverate Report',
+                reportDir            : 'D:\\coverage-reports/',
+                reportFiles          : 'index.html',
+                keepAll              : true,
+                alwaysLinkToLastBuild: true,
+                allowMissing         : false
+        ])
+
+        }
+        
+    }
+    
+    stage('Clean') {
+           steps{
+               echo "clean up workspace"
+               deleteDir()
+        }
+    } // end clean stage
+
+    
+} // finish stages
+
+    post {
+        success {
+            echo 'Successful'
+        }
+        failure {
+            echo 'This will run only if failed'
+        }
+        unstable {
+            echo 'This will run only if the run was marked as unstable'
+        }
+        changed {
+            echo 'This will run only if the state of the Pipeline has changed'
+            echo 'For example, if the Pipeline was previously failing but is now successful'
+        }
+    }
+
+}
